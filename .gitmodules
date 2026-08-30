@@ -1,0 +1,4 @@
+[submodule "GEM5"]
+	path = GEM5
+	url = https://github.com/janghoan/mem_sys_GEM5.git
+	branch = xs-dev
