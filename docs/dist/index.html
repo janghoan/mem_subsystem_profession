@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Prefetch와 MSHR, downstream memory pressure의 상호작용을 직접 조작하며 배우는 인터랙티브 연구 교재">
+  <meta name="theme-color" content="#163c3b">
+  <title>MSHR Lab · Prefetch × Memory System</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23163c3b'/%3E%3Cg fill='%23f2c477'%3E%3Crect x='14' y='14' width='15' height='15' rx='3'/%3E%3Crect x='35' y='14' width='15' height='15' rx='3'/%3E%3Crect x='14' y='35' width='15' height='15' rx='3'/%3E%3Crect x='35' y='35' width='15' height='15' rx='3'/%3E%3C/g%3E%3C/svg%3E">
+  <script>try{const t=localStorage.getItem('mshr-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">본문 바로가기</a>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="#top" aria-label="MSHR Lab 홈">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>MSHR Lab</span>
+        <small>Prefetch × Memory System</small>
+      </a>
+      <nav aria-label="주요 섹션">
+        <a href="#model">직접 실험</a>
+        <a href="#lifecycle">요청 흐름</a>
+        <a href="#matrix">실험 설계</a>
+      </nav>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="색상 모드 전환">
+        <span aria-hidden="true">◐</span>
+      </button>
+    </div>
+    <div class="progress" aria-hidden="true"><span id="read-progress"></span></div>
+  </header>
+
+  <main id="main">
+    <section class="intro" id="top">
+      <div class="wrap intro-grid">
+        <div class="intro-copy">
+          <p class="eyebrow">Interactive Memory-System Textbook</p>
+          <h1>미리 가져오면 빨라질까,<br><em>자리를 빼앗을까?</em></h1>
+          <p class="lead">Prefetch는 필요한 데이터를 먼저 요청해 지연을 숨깁니다. 하지만 처리 중인 miss마다 유한한 MSHR 한 칸과 downstream 대역폭이 필요합니다. 설정을 바꾸고, demand가 언제 도움받고 언제 밀려나는지 직접 확인해 보세요.</p>
+          <ul class="objectives" aria-label="학습 목표">
+            <li>MSHR가 miss를 추적하고 병합하는 과정을 설명한다.</li>
+            <li>prefetch degree와 MSHR 수의 trade-off를 읽는다.</li>
+            <li>cache-side pressure와 downstream bottleneck을 구분한다.</li>
+          </ul>
+        </div>
+
+        <article class="simulator" id="model" aria-labelledby="sim-title">
+          <div class="sim-head">
+            <div>
+              <p class="eyebrow">Concept Simulator</p>
+              <h2 id="sim-title">요청을 흘려 보내기</h2>
+            </div>
+            <span class="model-badge">개념 모델 · 측정값 아님</span>
+          </div>
+
+          <div class="controls">
+            <label>접근 패턴
+              <select id="pattern">
+                <option value="sequential">Sequential · 연속 접근</option>
+                <option value="strided">Strided · 규칙적 간격</option>
+                <option value="random">Random · 불규칙 접근</option>
+                <option value="indirect">Indirect · 간접 참조</option>
+              </select>
+            </label>
+            <fieldset>
+              <legend>MSHR entries</legend>
+              <div class="segments" data-control="mshr">
+                <button type="button" data-value="4">4</button>
+                <button type="button" data-value="8" aria-pressed="true">8</button>
+                <button type="button" data-value="16">16</button>
+                <button type="button" data-value="32">32</button>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Prefetch degree</legend>
+              <div class="segments" data-control="degree">
+                <button type="button" data-value="0">Off</button>
+                <button type="button" data-value="1">1</button>
+                <button type="button" data-value="2">2</button>
+                <button type="button" data-value="4" aria-pressed="true">4</button>
+                <button type="button" data-value="8">8</button>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="request-path" aria-label="메모리 요청 경로">
+            <button type="button" data-stage="cpu"><b>CPU</b><span>load</span></button>
+            <i aria-hidden="true"></i>
+            <button type="button" data-stage="cache"><b>L1 / L2</b><span>miss</span></button>
+            <i aria-hidden="true"></i>
+            <button type="button" class="hot" data-stage="mshr"><b>MSHR</b><span>track</span></button>
+            <i aria-hidden="true"></i>
+            <button type="button" data-stage="llc"><b>LLC</b><span>lookup</span></button>
+            <i aria-hidden="true"></i>
+            <button type="button" data-stage="noc"><b>NoC</b><span>route</span></button>
+            <i aria-hidden="true"></i>
+            <button type="button" data-stage="mc"><b>MC</b><span>queue</span></button>
+            <i aria-hidden="true"></i>
+            <button type="button" data-stage="dram"><b>DDR</b><span>serve</span></button>
+          </div>
+          <p class="stage-caption" id="stage-caption" aria-live="polite">MSHR는 아직 돌아오지 않은 cache block과 그 응답을 기다리는 요청을 기록합니다.</p>
+
+          <div class="mshr-panel">
+            <div class="panel-title"><b>MSHR table</b><span id="occupancy-label">0 / 8 entries</span></div>
+            <div class="slots" id="slots" aria-label="MSHR 점유 상태"></div>
+            <div class="legend"><span><i class="demand"></i>Demand</span><span><i class="prefetch"></i>Prefetch</span><span><i class="merge"></i>Merged</span><span><i class="empty"></i>Empty</span></div>
+          </div>
+
+          <div class="metrics" aria-live="polite" aria-atomic="true">
+            <div><span>예상 IPC</span><strong id="metric-ipc">–</strong><small>상대적 개념값</small></div>
+            <div><span>MSHR 점유</span><strong id="metric-occ">–</strong><small>평균 모델</small></div>
+            <div><span>Demand stall</span><strong id="metric-stall">–</strong><small>100 cycle당</small></div>
+            <div><span>PF accuracy</span><strong id="metric-accuracy">–</strong><small>useful / issued</small></div>
+            <div><span>DRAM traffic</span><strong id="metric-traffic">–</strong><small>PF off = 1.00×</small></div>
+          </div>
+
+          <div class="sim-actions">
+            <button class="primary" id="run-toggle" type="button">일시정지</button>
+            <button type="button" id="step">한 단계</button>
+            <button type="button" id="reset">초기화</button>
+            <span id="sim-status" role="status">자동 실행 중</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="chapter wrap" id="lifecycle">
+      <header class="chapter-head">
+        <p class="chapter-number">01 · MISS LIFECYCLE</p>
+        <h2>한 번의 miss는 어디에 머무는가</h2>
+        <p>MSHR는 데이터 자체를 저장하는 곳이 아니라, 진행 중인 miss의 주소와 기다리는 요청을 추적하는 구조입니다. 같은 block을 다시 요청하면 새 entry 대신 기존 miss에 합쳐질 수 있습니다.</p>
+      </header>
+
+      <div class="lesson-grid">
+        <div class="stepper" role="tablist" aria-label="miss 처리 단계">
+          <button role="tab" aria-selected="true" data-life="allocate"><span>1</span><b>Allocate</b><small>새 block miss를 기록</small></button>
+          <button role="tab" aria-selected="false" data-life="merge"><span>2</span><b>Merge</b><small>같은 block 요청을 병합</small></button>
+          <button role="tab" aria-selected="false" data-life="wait"><span>3</span><b>Wait</b><small>하위 계층 응답을 대기</small></button>
+          <button role="tab" aria-selected="false" data-life="fill"><span>4</span><b>Fill</b><small>cache를 채우고 해제</small></button>
+        </div>
+        <div class="explain-card" id="life-panel" role="tabpanel" tabindex="0">
+          <p class="eyebrow" id="life-kicker">ALLOCATE</p>
+          <h3 id="life-title">주소와 요청자를 한 칸에 기록합니다</h3>
+          <p id="life-copy">cache lookup이 miss이면 빈 MSHR entry를 찾습니다. 빈 칸이 없다면 demand는 하위 계층으로 나가지 못하고 기다립니다.</p>
+          <div class="code-line"><span>block</span><b id="life-block">0x10C0</b><span>state</span><b id="life-state">ALLOCATED</b></div>
+        </div>
+      </div>
+
+      <aside class="predict">
+        <div>
+          <p class="eyebrow">먼저 예측해 보기</p>
+          <h3>MSHR를 8개에서 32개로 늘리면 IPC는 항상 오를까요?</h3>
+        </div>
+        <details>
+          <summary>생각한 뒤 설명 보기</summary>
+          <p>아닙니다. MSHR가 병목일 때는 더 많은 memory-level parallelism을 만들 수 있지만, memory controller queue나 DDR bandwidth가 이미 포화라면 outstanding request만 늘고 지연은 그대로이거나 악화될 수 있습니다.</p>
+        </details>
+      </aside>
+    </section>
+
+    <section class="chapter tone" id="diagnosis">
+      <div class="wrap">
+        <header class="chapter-head">
+          <p class="chapter-number">02 · BOTTLENECK DIAGNOSIS</p>
+          <h2>점유율 하나만 보고 결론 내리지 않기</h2>
+          <p>같은 IPC 저하라도 막힌 위치는 다를 수 있습니다. 신호 묶음을 함께 읽어야 throttling 대상이 보입니다.</p>
+        </header>
+        <div class="diagnosis-grid">
+          <article><span class="meter high">91%</span><h3>MSHR pressure</h3><p>MSHR full cycle과 demand allocation stall이 함께 증가한다면 cache-side resource competition을 의심합니다.</p><ul><li>occupancy histogram</li><li>full cycles</li><li>demand allocation stall</li></ul></article>
+          <article><span class="meter mid">35%</span><h3>Downstream pressure</h3><p>MSHR는 여유롭지만 MC queue가 높다면 MSHR 증설보다 traffic 제어가 먼저입니다.</p><ul><li>MC queue wait</li><li>DRAM utilization</li><li>NoC injection stall</li></ul></article>
+          <article><span class="meter good">72%</span><h3>Useful prefetch</h3><p>accuracy만으로 충분하지 않습니다. 제때 도착했는지, demand를 밀어냈는지, traffic 비용이 얼마인지 같이 봅니다.</p><ul><li>useful / late / useless</li><li>coverage</li><li>additional traffic</li></ul></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="chapter wrap" id="matrix">
+      <header class="chapter-head">
+        <p class="chapter-number">03 · EXPERIMENT DESIGN</p>
+        <h2>한 번에 하나의 축만 바꿉니다</h2>
+        <p>먼저 MSHR 8에서 prefetch aggressiveness를 바꾸고, 다음으로 degree 4에서 MSHR capacity를 바꿉니다. 아래는 실행 결과가 아니라 첫 실험 순서입니다.</p>
+      </header>
+      <div class="matrix-wrap" tabindex="0" aria-label="초기 실험 매트릭스, 가로로 스크롤 가능">
+        <table>
+          <thead><tr><th>Case</th><th>MSHR</th><th>Prefetch</th><th>Degree</th><th>확인할 질문</th></tr></thead>
+          <tbody>
+            <tr><td>A</td><td>8</td><td>OFF</td><td>–</td><td>baseline latency와 traffic은?</td></tr>
+            <tr><td>B–E</td><td>8</td><td>ON</td><td>1 / 2 / 4 / 8</td><td>언제 IPC gain보다 pressure가 커지는가?</td></tr>
+            <tr><td>F</td><td>4</td><td>ON</td><td>4</td><td>작은 capacity가 demand를 막는가?</td></tr>
+            <tr><td>G–H</td><td>16 / 32</td><td>ON</td><td>4</td><td>추가 MLP가 downstream에서 흡수되는가?</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="formula-grid">
+        <article><p>Accuracy</p><strong>useful prefetch / issued prefetch</strong><small>예측 품질. 늦게 도착한 요청과 resource cost는 별도로 봅니다.</small></article>
+        <article><p>Total memory latency</p><strong>queue wait + DRAM service</strong><small>요청이 기다린 시간과 실제 처리된 시간을 분리합니다.</small></article>
+        <article><p>Performance per traffic</p><strong>IPC improvement / additional traffic</strong><small>추가 bandwidth가 실제 성능으로 전환됐는지 확인합니다.</small></article>
+      </div>
+    </section>
+
+    <section class="chapter closing">
+      <div class="wrap closing-grid">
+        <div>
+          <p class="eyebrow">From Model to Measurement</p>
+          <h2>다음 단계는 gem5에서 측정하기</h2>
+          <p>이 페이지의 simulator는 관계를 설명하기 위한 개념 모델입니다. 실제 결론은 동일 workload와 warmup 조건에서 수집한 gem5·DRAMSim3 통계로 내려야 합니다.</p>
+        </div>
+        <div class="link-stack">
+          <a href="https://github.com/janghoan/mem_subsystem_profession/blob/main/1_mshr/exp_plan.md">전체 실험 계획 보기 <span>exp_plan.md</span></a>
+          <a href="https://github.com/janghoan/mem_subsystem_profession">실행 환경과 저장소 보기 <span>GitHub</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap"><p>MSHR Lab · XS-GEM5 memory subsystem study</p><p>설명 모델과 실제 측정 결과를 구분해 사용하세요.</p></div>
+  </footer>
+  <noscript><div class="noscript">설명 자료는 읽을 수 있지만 개념 simulator를 조작하려면 JavaScript가 필요합니다.</div></noscript>
+</body>
+</html>

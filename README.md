@@ -5,10 +5,21 @@ XS-GEM5를 사용해 prefetch와 MSHR, LLC, NoC, memory controller 및 DDR 병�
 ## Repository Layout
 
 - `1_mshr/`: MSHR/prefetch 실험 계획과 로컬 실행 결과
+- `docs/`: MSHR와 prefetch 관계를 설명하는 인터랙티브 교재
 - `GEM5/`: `janghoan/mem_sys_GEM5`의 `xs-dev` 브랜치를 사용하는 submodule
 - `AGENTS.md`: 저장소 개발 및 검증 지침
 
 `1_mshr/results/`와 GEM5 빌드 산출물은 Git에 포함되지 않는다.
+
+## Interactive Guide
+
+[MSHR Lab](https://mshr-lab.janghoan.chatgpt.site)은 접근 패턴, MSHR 수, prefetch degree를 바꾸며 요청 흐름과 resource pressure를 살펴보는 인터랙티브 설명 자료다. 표시되는 simulator 값은 관계를 설명하기 위한 개념 모델이며 실제 gem5 측정값이 아니다.
+
+로컬에서는 다음과 같이 실행한다.
+
+```bash
+python3 -m http.server 8000 --directory docs/dist
+```
 
 ## Clone
 
