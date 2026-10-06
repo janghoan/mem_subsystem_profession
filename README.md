@@ -5,6 +5,7 @@ XS-GEM5를 사용해 prefetch와 MSHR, LLC, NoC, memory controller 및 DDR 병�
 ## Repository Layout
 
 - `1_mshr/`: MSHR/prefetch 실험 계획과 로컬 실행 결과
+- `2_prefetch/`: prefetch ON/OFF baseline 실험 지침과 로컬 결과
 - `docs/`: MSHR와 prefetch 관계를 설명하는 인터랙티브 교재
 - `prefetcher-lab/`: prefetch 기초와 DPC4 설계를 다루는 인터랙티브 교재
 - `GEM5/`: `janghoan/mem_sys_GEM5`의 `xs-dev` 브랜치를 사용하는 submodule
@@ -24,10 +25,10 @@ python3 -m http.server 8000 --directory docs/dist
 
 ### Prefetcher Lab
 
-[Prefetcher Lab](https://prefetcher-lab.janghoan.chatgpt.site)은 접근 패턴,
-predictor 종류, degree와 lookahead를 바꾸며
-accuracy, coverage, timeliness 및 traffic의 관계를 살펴본다. DPC4(HPCA 2026)의
-8개 공식 제출작도 각 설계가 해결하는 문제와 핵심 메커니즘 중심으로 비교한다.
+[Prefetcher Lab](https://prefetcher-lab.janghoan.chatgpt.site)은 latency timeline,
+주소 예측 연습, predictor 구조, event 기반 A/B 실험을 통해 accuracy, coverage,
+timeliness 및 resource pressure를 설명한다. DPC4(HPCA 2026)의 8개 공식 제출작을
+동일한 기준으로 비교하고, XS-GEM5 baseline 실험으로 이어진다.
 
 ```bash
 python3 -m http.server 8001 --directory prefetcher-lab/dist

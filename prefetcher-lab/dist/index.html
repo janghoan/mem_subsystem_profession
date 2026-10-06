@@ -3,109 +3,242 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="접근 패턴을 직접 바꾸며 하드웨어 데이터 프리페칭과 DPC4 설계를 배우는 인터랙티브 랩">
-  <meta name="theme-color" content="#eef0ff">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232b2d73'/%3E%3Cpath d='M14 22h23M14 32h36M14 42h23' stroke='%23fff' stroke-width='6' stroke-linecap='round'/%3E%3Cpath d='m37 14 12 8-12 8' fill='none' stroke='%23ffd66b' stroke-width='5' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <title>Prefetcher Lab</title>
+  <meta name="description" content="주소 패턴, cache 상태, DPC4 설계를 직접 탐색하며 하드웨어 데이터 프리페칭을 배우는 인터랙티브 교재">
+  <meta name="theme-color" content="#10131d">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2310131d'/%3E%3Cpath d='M12 20h27M12 32h40M12 44h27' stroke='%23edf0f5' stroke-width='6' stroke-linecap='round'/%3E%3Cpath d='m38 11 14 9-14 9' fill='none' stroke='%23ffca4b' stroke-width='5' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <title>Prefetcher Lab — Interactive Field Manual</title>
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="#playground" aria-label="Prefetcher Lab 처음으로"><span aria-hidden="true">P→</span> Prefetcher Lab</a>
-    <nav aria-label="주요 섹션">
-      <a href="#basics">기초</a><a href="#dpc4">DPC4</a><a href="#sources">출처</a>
-    </nav>
-    <button class="theme" id="theme" type="button" aria-label="색상 모드 변경">◐</button>
+  <a class="skip" href="#content">본문으로 건너뛰기</a>
+  <header class="mobile-head">
+    <a href="#start" class="wordmark"><span>P→</span> Prefetcher Lab</a>
+    <button id="menuToggle" aria-label="목차 열기" aria-expanded="false">목차</button>
   </header>
 
-  <main>
-    <section class="playground" id="playground" aria-labelledby="lab-title">
-      <div class="intro">
-        <p class="eyebrow">HARDWARE DATA PREFETCHING · INTERACTIVE NOTE 01</p>
-        <h1 id="lab-title">미래의 주소를<br><em>얼마나 잘</em> 맞힐까?</h1>
-        <p>프리페처는 CPU가 요청하기 전에 데이터를 캐시로 가져와 메모리 지연을 숨긴다. 아래 모델에서 예측이 성능이 되기 위한 조건을 직접 확인해 보자.</p>
-        <p class="model-note"><strong>개념 모델</strong> — 실제 ChampSim·gem5 측정값이 아니라 설계 간 관계를 설명하는 시각화다.</p>
+  <aside class="rail" id="rail">
+    <a href="#start" class="wordmark"><span>P→</span> Prefetcher Lab</a>
+    <div class="course-meta"><b>Interactive field manual</b><span>6 chapters · 약 35분</span></div>
+    <nav aria-label="챕터 목차">
+      <a href="#latency" data-section="latency"><i>01</i><span>Latency hiding<small>왜 필요한가</small></span></a>
+      <a href="#patterns" data-section="patterns"><i>02</i><span>Read the trace<small>주소 패턴 읽기</small></span></a>
+      <a href="#anatomy" data-section="anatomy"><i>03</i><span>Predictor anatomy<small>학습과 예측</small></span></a>
+      <a href="#tradeoffs" data-section="tradeoffs"><i>04</i><span>Performance lab<small>비용과 부작용</small></span></a>
+      <a href="#dpc4" data-section="dpc4"><i>05</i><span>DPC4 atlas<small>8개 최신 설계</small></span></a>
+      <a href="#gem5" data-section="gem5"><i>06</i><span>XS-GEM5 lab<small>직접 측정하기</small></span></a>
+    </nav>
+    <div class="rail-foot"><div class="progress"><i id="progressBar"></i></div><span id="progressText">0% 읽음</span><button id="themeToggle" aria-label="색상 모드 변경">Light / Dark</button></div>
+  </aside>
+
+  <main id="content">
+    <section class="cover" id="start">
+      <div class="cover-copy">
+        <p class="kicker">COMPUTER ARCHITECTURE · NOTE 01</p>
+        <h1>Prefetching,<br><em>before</em> the miss.</h1>
+        <p class="lede">프리페처는 미래의 cache line을 추측한다. 하지만 주소를 맞히는 것만으로는 부족하다. <strong>필요하기 전에 도착하고, 자원을 과도하게 쓰지 않아야</strong> 실제 성능이 된다.</p>
+        <div class="objectives"><span>이 노트가 끝나면</span><ul><li>주소 trace에서 예측 가능한 구조를 찾는다.</li><li>accuracy·coverage·timeliness의 충돌을 설명한다.</li><li>DPC4 설계를 동일한 기준으로 비교한다.</li><li>XS-GEM5에서 baseline 실험을 시작한다.</li></ul></div>
       </div>
-
-      <div class="workbench">
-        <div class="controls" aria-label="실험 설정">
-          <label>접근 패턴<select id="pattern"><option value="sequential">Sequential · +1</option><option value="stride">Stride · +3</option><option value="alternating">Alternating · +1/+3</option><option value="page">Page crossing</option><option value="irregular">Irregular / indirect</option></select></label>
-          <label>프리페처<select id="prefetcher"><option value="next">Next-line</option><option value="stride">Stride</option><option value="delta">Delta / signature</option><option value="spatial">Spatial map</option><option value="none">None</option></select></label>
-          <label>Degree <output id="degreeOut">2</output><input id="degree" type="range" min="1" max="4" value="2"></label>
-          <label>Lookahead <output id="distanceOut">2</output><input id="distance" type="range" min="1" max="4" value="2"></label>
-          <button id="step" class="primary" type="button">다음 접근 <kbd>Space</kbd></button>
-          <button id="reset" class="secondary" type="button">처음부터</button>
-        </div>
-
-        <div class="trace-panel">
-          <div class="trace-head"><div><span class="status-dot"></span> Address trace</div><code id="cycle">ACCESS 01 / 12</code></div>
-          <div class="address-line" id="addressLine" aria-live="polite"></div>
-          <div class="legend"><span><i class="demand"></i>Demand</span><span><i class="useful"></i>Useful</span><span><i class="late"></i>Late</span><span><i class="waste"></i>Unused</span></div>
-          <p class="explain" id="explain"></p>
-        </div>
-
-        <div class="scoreboard" aria-label="프리페처 평가 지표">
-          <article><span>ACCURACY</span><strong id="accuracy">—</strong><small>사용된 prefetch / 발행 수</small></article>
-          <article><span>COVERAGE</span><strong id="coverage">—</strong><small>prefetch hit / 전체 miss 기회</small></article>
-          <article><span>TIMELY</span><strong id="timely">—</strong><small>요청 전에 도착한 비율</small></article>
-          <article><span>TRAFFIC</span><strong id="traffic">0</strong><small>추가 메모리 요청</small></article>
-        </div>
+      <div class="cover-visual" aria-label="CPU에서 DRAM까지의 메모리 계층">
+        <div class="pulse-path"><span class="cpu">CPU<small>1 ns</small></span><i></i><span>L1<small>~1 ns</small></span><i></i><span>L2<small>~4 ns</small></span><i></i><span>LLC<small>~15 ns</small></span><i></i><span class="dram">DRAM<small>~80 ns</small></span></div>
+        <p>요청이 DRAM까지 간 뒤 기다리지 말고, <b>먼저 보내자.</b></p>
       </div>
     </section>
 
-    <section class="chapter" id="basics">
-      <header class="chapter-head"><p>01 · THE MENTAL MODEL</p><h2>좋은 예측만으로는 부족하다</h2><p>주소를 맞혀도 늦게 도착하거나, 너무 많이 가져오거나, 유용한 cache line을 밀어내면 손해다.</p></header>
-      <div class="question-grid">
-        <article><b>01</b><h3>When</h3><p>어떤 이벤트가 예측을 시작하는가? load, miss, eviction처럼 trigger가 관측 시점을 정한다.</p></article>
-        <article><b>02</b><h3>What</h3><p>다음 line은 무엇인가? PC, stride, delta history, region bitmap이 서로 다른 규칙을 학습한다.</p></article>
-        <article><b>03</b><h3>How far</h3><p>distance가 짧으면 late, degree가 크면 bandwidth·MSHR·cache pressure가 증가한다.</p></article>
-        <article><b>04</b><h3>Where</h3><p>L1은 빠르지만 작고, L2/LLC는 멀지만 더 긴 lookahead와 넓은 관측 범위를 가진다.</p></article>
+    <section class="chapter" id="latency" data-chapter="01">
+      <header class="chapter-title">
+        <p class="kicker">CHAPTER 01 · LATENCY HIDING</p>
+        <h2>프리페처는 지연을 없애지 않는다.<br><em>지연과 실행을 겹친다.</em></h2>
+        <p>Demand가 발생한 시점보다 최소한 memory latency만큼 먼저 요청해야 한다. 같은 주소를 맞혀도 발행 시점에 따라 useful, late, useless로 결과가 갈린다.</p>
+      </header>
+
+      <div class="lab-card latency-lab">
+        <div class="lab-toolbar">
+          <div><span class="lab-no">LAB 01</span><h3>Latency window</h3></div>
+          <div class="segmented" role="group" aria-label="프리페치 활성화"><button class="active" data-latency-mode="off">Prefetch OFF</button><button data-latency-mode="on">Prefetch ON</button></div>
+        </div>
+        <div class="latency-controls">
+          <label>Memory latency <output id="memLatencyOut">8 cycles</output><input id="memLatency" type="range" min="4" max="14" value="8"></label>
+          <label>Lookahead <output id="lookaheadOut">6 cycles</output><input id="lookahead" type="range" min="1" max="14" value="6"></label>
+        </div>
+        <div class="timeline-wrap">
+          <div class="timeline-labels"><span>cycle 0</span><span>5</span><span>10</span><span>15</span><span>20</span></div>
+          <div class="timeline-row"><b>CPU work</b><div class="track"><i class="work" style="--start:0;--length:50"></i><span class="demand-marker" style="--at:50">demand</span><i class="stall" id="stallBar"></i><i class="resume" id="resumeBar"></i></div></div>
+          <div class="timeline-row"><b>Memory</b><div class="track"><i class="request" id="requestBar"></i><span class="arrival" id="arrivalMarker">arrives</span></div></div>
+        </div>
+        <div class="lab-verdict"><span id="latencyBadge">DEMAND MISS</span><strong id="stallCycles">8-cycle stall</strong><p id="latencyExplain">Demand가 발생한 뒤 memory request를 보내므로 전체 지연이 critical path에 놓인다.</p></div>
       </div>
 
-      <div class="tradeoff">
-        <div><p class="eyebrow">THE THREE-WAY TENSION</p><h3>Accuracy × Coverage × Timeliness</h3><p>셋 중 하나만 최대화하면 성능과 어긋날 수 있다. 실제 설계는 bandwidth, cache pollution, metadata 비용까지 함께 조절한다.</p></div>
-        <div class="triangle" aria-label="정확도, 커버리지, 적시성의 균형"><span>Accuracy</span><span>Coverage</span><span>Timeliness</span><i></i></div>
+      <div class="concept-grid three">
+        <article><span class="concept-icon useful">✓</span><h3>Useful</h3><p>요청한 line이 demand보다 먼저 도착해 cache hit로 바뀐다.</p><code>arrival &lt; demand</code></article>
+        <article><span class="concept-icon late">◷</span><h3>Late</h3><p>주소는 맞았지만 demand 시점에도 memory request가 진행 중이다.</p><code>trigger &lt; demand &lt; arrival</code></article>
+        <article><span class="concept-icon unused">×</span><h3>Useless</h3><p>가져온 line을 사용하기 전에 eviction되거나 실행 경로가 바뀐다.</p><code>prefetched ∧ never used</code></article>
       </div>
 
-      <div class="taxonomy">
-        <div><span>단순·저비용</span><strong>Next-line / Stream</strong><p>연속 접근에 강하지만 불필요한 traffic을 만들기 쉽다.</p></div>
-        <div><span>PC 기반</span><strong>Stride / Delta</strong><p>명령별 규칙 또는 delta sequence를 추적한다.</p></div>
-        <div><span>영역 기반</span><strong>Spatial / Access map</strong><p>page·region 내부의 접근 모양을 bitmap으로 기억한다.</p></div>
-        <div><span>적응형</span><strong>Hybrid / Ensemble</strong><p>여러 예측기와 throttling을 workload 상태에 맞춰 선택한다.</p></div>
+      <aside class="insight"><b>핵심 관찰</b><p>Timeliness는 예측기의 “정확도”와 별개의 축이다. 그래서 Berti나 EDP 같은 설계는 다음 주소뿐 아니라 <em>어느 이전 접근에서 발행할지</em>를 학습한다.</p></aside>
+    </section>
+
+    <section class="chapter tone" id="patterns" data-chapter="02">
+      <header class="chapter-title">
+        <p class="kicker">CHAPTER 02 · READ THE TRACE</p>
+        <h2>주소가 아니라<br><em>주소 사이의 관계</em>를 본다.</h2>
+        <p>64-byte cache line 번호로 변환하면 byte offset이라는 잡음이 사라진다. 프리페처는 line 간 delta, 같은 PC의 반복, region 내부의 모양을 학습한다.</p>
+      </header>
+
+      <div class="formula-strip"><span>byte address</span><b>÷ 64 B</b><span>cache-line address</span><b>→ subtract</b><span>delta sequence</span></div>
+
+      <div class="lab-card trace-lab">
+        <div class="lab-toolbar">
+          <div><span class="lab-no">LAB 02</span><h3>Trace microscope</h3></div>
+          <label class="select-label">PATTERN<select id="tracePattern"><option value="sequential">Sequential</option><option value="stride">Fixed stride</option><option value="alternating">Alternating delta</option><option value="multistream">Two interleaved streams</option><option value="spatial">Spatial region</option><option value="irregular">Pointer-like irregular</option></select></label>
+        </div>
+        <div class="trace-stage">
+          <div class="trace-meta"><span>OBSERVED CACHE-LINE ADDRESSES</span><code id="traceStepLabel">4 / 12 observed</code></div>
+          <div class="trace-cells" id="traceCells"></div>
+          <div class="delta-cells" id="deltaCells"></div>
+          <div class="prediction-box">
+            <div><small>당신의 다음 주소 예측</small><label><span>L</span><input id="guessInput" type="number" inputmode="numeric" value="104"></label></div>
+            <button id="guessButton">예측 확인</button>
+            <button id="traceNext" class="quiet">한 단계 진행</button>
+            <button id="traceReset" class="quiet">초기화</button>
+          </div>
+          <div class="feedback" id="traceFeedback" aria-live="polite"><b>패턴을 찾아보자.</b><p>주소 자체보다 아래 delta sequence가 반복되는지 먼저 확인하세요.</p></div>
+        </div>
+      </div>
+
+      <div class="pattern-notes" id="patternNotes"></div>
+    </section>
+
+    <section class="chapter" id="anatomy" data-chapter="03">
+      <header class="chapter-title">
+        <p class="kicker">CHAPTER 03 · PREDICTOR ANATOMY</p>
+        <h2>모든 프리페처는<br><em>네 가지 질문</em>에 답한다.</h2>
+      </header>
+
+      <div class="four-questions">
+        <article><b>01 · TRIGGER</b><h3>When?</h3><p>load, cache access, miss 중 어떤 사건을 학습과 예측의 시작점으로 삼을까?</p></article>
+        <article><b>02 · SIGNAL</b><h3>What?</h3><p>PC, address, delta history, region bitmap 중 무엇을 key와 history로 사용할까?</p></article>
+        <article><b>03 · LOOKAHEAD</b><h3>How far?</h3><p>latency를 숨기려면 얼마나 앞서가고 한 번에 몇 line을 생성해야 할까?</p></article>
+        <article><b>04 · PLACEMENT</b><h3>Where?</h3><p>L1, L2, LLC 중 어디에 채울 때 latency와 pollution 사이 균형이 맞을까?</p></article>
+      </div>
+
+      <div class="anatomy-explorer">
+        <div class="type-tabs" id="typeTabs" role="tablist" aria-label="프리페처 종류"></div>
+        <div class="type-detail">
+          <div class="type-copy"><p class="kicker" id="typeFamily"></p><h3 id="typeName"></h3><p id="typeSummary"></p><dl id="typeFacts"></dl></div>
+          <div class="predictor-machine" id="predictorMachine" aria-label="예측기 데이터 흐름"></div>
+        </div>
+      </div>
+
+      <div class="metric-defs">
+        <article><div class="fraction"><span>useful prefetches</span><i></i><span>issued prefetches</span></div><h3>Accuracy</h3><p>발행한 요청 중 실제 demand가 사용한 비율. 낮으면 bandwidth와 cache capacity를 낭비한다.</p></article>
+        <article><div class="fraction"><span>prefetched misses</span><i></i><span>all baseline misses</span></div><h3>Coverage</h3><p>원래 발생할 miss 중 얼마나 제거했는지. 정확해도 너무 소극적이면 coverage가 낮다.</p></article>
+        <article><div class="fraction"><span>on-time useful</span><i></i><span>all useful</span></div><h3>Timeliness</h3><p>맞힌 예측 중 demand 이전에 도착한 비율. lookahead와 memory latency가 결정한다.</p></article>
       </div>
     </section>
 
-    <section class="chapter dpc" id="dpc4">
-      <header class="chapter-head"><p>02 · DPC4 / HPCA 2026</p><h2>최신 챔피언십의 8가지 답</h2><p>제4회 Data Prefetching Championship은 ChampSim에서 610개 trace를 사용해 단일 코어 full/limited bandwidth와 4-core 환경을 평가했다. 카드를 선택해 설계가 해결하려는 병목을 비교해 보자.</p></header>
-      <div class="dpc-layout">
-        <div class="paper-list" id="paperList" role="list" aria-label="DPC4 제출작"></div>
-        <article class="paper-detail" id="paperDetail" aria-live="polite"></article>
+    <section class="chapter dark-section" id="tradeoffs" data-chapter="04">
+      <header class="chapter-title">
+        <p class="kicker">CHAPTER 04 · PERFORMANCE LAB</p>
+        <h2>공격적인 프리페처가<br><em>항상 빠르지는 않다.</em></h2>
+        <p>Degree와 distance를 높이면 coverage와 timeliness가 좋아질 수 있지만, MSHR와 memory bandwidth를 점유하고 useful line을 cache에서 밀어낸다.</p>
+      </header>
+
+      <div class="sim-controls">
+        <label>WORKLOAD<select id="simPattern"><option value="stream">Streaming</option><option value="mixed">Mixed strides</option><option value="spatial">Sparse spatial</option><option value="irregular">Irregular</option></select></label>
+        <label>MEMORY LATENCY<output id="simLatencyOut">8 cycles</output><input id="simLatency" type="range" min="4" max="14" value="8"></label>
+        <button id="runSim">Run 24 accesses</button>
       </div>
-      <div class="evaluation">
-        <div><span>TRACE SUITE</span><strong>610</strong><small>SPEC17 · Google · AI/ML · Graph</small></div>
-        <div><span>1C · FULL BW</span><strong>4,800</strong><small>MT/s, baseline 대비 speedup</small></div>
-        <div><span>1C · LIMITED</span><strong>800</strong><small>MT/s, bandwidth pressure</small></div>
-        <div><span>MULTICORE</span><strong>4C</strong><small>4,800 MT/s, fairness 포함</small></div>
+
+      <div class="ab-grid">
+        <article class="config-card" data-config="a"><header><span>CONFIG A</span><strong>Conservative</strong></header><label>Predictor<select class="cfg-type"><option value="next">Next-line</option><option value="stride" selected>Stride</option><option value="delta">Delta</option><option value="spatial">Spatial</option><option value="none">None</option></select></label><label>Degree <output class="cfg-degree-out">2</output><input class="cfg-degree" type="range" min="1" max="8" value="2"></label><label>Distance <output class="cfg-distance-out">2</output><input class="cfg-distance" type="range" min="1" max="8" value="2"></label><div class="mini-metrics"></div></article>
+        <div class="winner" id="winner"><span>COMPARE</span><strong>Run the trace</strong><p>두 설정은 같은 demand trace와 cache 조건을 사용한다.</p></div>
+        <article class="config-card" data-config="b"><header><span>CONFIG B</span><strong>Aggressive</strong></header><label>Predictor<select class="cfg-type"><option value="next">Next-line</option><option value="stride" selected>Stride</option><option value="delta">Delta</option><option value="spatial">Spatial</option><option value="none">None</option></select></label><label>Degree <output class="cfg-degree-out">6</output><input class="cfg-degree" type="range" min="1" max="8" value="6"></label><label>Distance <output class="cfg-distance-out">5</output><input class="cfg-distance" type="range" min="1" max="8" value="5"></label><div class="mini-metrics"></div></article>
+      </div>
+
+      <div class="event-view">
+        <div class="event-head"><div><span class="lab-no">EVENT TRACE</span><h3 id="eventTitle">실행 전</h3></div><div class="event-legend"><span><i class="demand-dot"></i>Demand</span><span><i class="hit-dot"></i>Prefetch hit</span><span><i class="late-dot"></i>Late</span><span><i class="waste-dot"></i>Unused</span></div></div>
+        <div class="event-track" id="eventTrack"><p>Run 버튼을 눌러 24개 memory access를 시뮬레이션하세요.</p></div>
+        <div class="resource-panels"><article><header><b>MSHR pressure</b><span id="mshrValue">—</span></header><div class="meter"><i id="mshrMeter"></i></div><p>동시에 outstanding 상태인 demand와 prefetch request의 최대값.</p></article><article><header><b>Bandwidth pressure</b><span id="bwValue">—</span></header><div class="meter"><i id="bwMeter"></i></div><p>Demand 외에 추가된 memory traffic. 제한된 bandwidth에서는 중요하다.</p></article><article><header><b>Pollution risk</b><span id="pollutionValue">—</span></header><div class="meter"><i id="pollutionMeter"></i></div><p>사용되지 않은 line이 제한된 cache capacity를 차지한 정도.</p></article></div>
+      </div>
+      <p class="model-disclaimer"><b>모델의 경계:</b> 이 실험기는 개념을 위한 deterministic event model이다. IPC나 cycle 결과는 gem5/ChampSim 수치가 아니며, 정책 간 인과관계를 관찰하는 용도로만 사용한다.</p>
+    </section>
+
+    <section class="chapter" id="dpc4" data-chapter="05">
+      <header class="chapter-title">
+        <p class="kicker">CHAPTER 05 · DPC4 / HPCA 2026</p>
+        <h2>하나의 완벽한 predictor보다<br><em>경계를 다루는 방법</em>들.</h2>
+        <p>제4회 Data Prefetching Championship의 8개 main-program 제출작은 page boundary, trigger timing, 중복 요청, workload 변화, multicore fairness처럼 “예측 이후”의 문제까지 다룬다.</p>
+      </header>
+
+      <div class="dpc-context">
+        <article><span>TRACE SUITE</span><strong>610</strong><p>SPEC17 92 · Google 359<br>AI/ML 80 · Graph 79</p></article>
+        <article><span>1C · FULL BW</span><strong>4,800</strong><p>MT/s<br>baseline 대비 speedup</p></article>
+        <article><span>1C · LIMITED</span><strong>800</strong><p>MT/s<br>bandwidth 민감도</p></article>
+        <article><span>MULTICORE</span><strong>4C</strong><p>4,800 MT/s<br>weighted speedup</p></article>
+      </div>
+      <p class="source-note">Overall score는 세 환경의 점수를 동일 가중치 geometric mean으로 결합한다. 아래 설명은 각 팀의 공식 final paper를 요약했으며, 논문 자체의 training/evaluation 수치를 최종 순위로 재해석하지 않는다.</p>
+
+      <div class="atlas">
+        <div class="atlas-list" id="dpcList"></div>
+        <article class="atlas-detail" id="dpcDetail" aria-live="polite"></article>
+      </div>
+
+      <div class="compare-block">
+        <header><div><span class="lab-no">COMPARE DESIGNS</span><h3>같은 질문으로 비교하기</h3></div><div class="compare-selects"><select id="compareA" aria-label="첫 번째 설계"></select><span>vs</span><select id="compareB" aria-label="두 번째 설계"></select></div></header>
+        <div class="compare-table" id="compareTable"></div>
+      </div>
+
+      <div class="dpc-lessons">
+        <article><b>Lesson 01</b><h3>Address domain도 설계 선택이다.</h3><p>VIP는 VA의 연속성과 PA의 안전성을 TLB 검증으로 연결한다. page crossing은 단순히 stride를 계속 더하는 문제가 아니다.</p></article>
+        <article><b>Lesson 02</b><h3>Control plane이 predictor만큼 중요하다.</h3><p>Emender와 BertiGO는 priority, duplicate filter, confidence, set dueling으로 이미 생성된 후보를 통제한다.</p></article>
+        <article><b>Lesson 03</b><h3>Timeliness는 trigger의 문제다.</h3><p>EDP는 target을 만드는 IP와 더 이른 trigger IP를 연결한다. 정확한 target을 늦게 계산하는 문제를 구조적으로 피한다.</p></article>
+        <article><b>Lesson 04</b><h3>Workload에 따라 전문가를 바꾼다.</h3><p>sBerti·gBerti는 Berti의 관측 범위를 넓히고, uMAMA는 여러 predictor를 performance reward로 선택한다.</p></article>
       </div>
     </section>
 
-    <section class="chapter method">
-      <header class="chapter-head"><p>03 · HOW TO READ A PREFETCHER</p><h2>논문을 읽을 때 던질 질문</h2></header>
-      <ol>
-        <li><span>Signal</span><p>어떤 주소·PC·delta·region state를 관측하는가?</p></li>
-        <li><span>Prediction</span><p>패턴을 어떻게 저장하고 다음 주소로 변환하는가?</p></li>
-        <li><span>Control</span><p>confidence, priority, throttling은 언제 공격성을 낮추는가?</p></li>
-        <li><span>Resources</span><p>metadata, MSHR, bandwidth, cache pollution 비용은 얼마인가?</p></li>
-        <li><span>Evidence</span><p>어떤 workload와 baseline에서 실제 성능이 개선되는가?</p></li>
-      </ol>
+    <section class="chapter tone" id="gem5" data-chapter="06">
+      <header class="chapter-title">
+        <p class="kicker">CHAPTER 06 · XS-GEM5 LAB</p>
+        <h2>개념 모델을 닫고<br><em>실제 통계를 측정하자.</em></h2>
+        <p>이 저장소의 `kmhv3.py`는 기본적으로 XSCompositePrefetcher(L1D), PrefetcherForwarder(L2), WorkerPrefetcher(L3)를 구성한다. 먼저 전체 prefetch를 끈 baseline과 기본 설정을 비교한다.</p>
+      </header>
+
+      <div class="experiment-flow">
+        <article><span>STEP 01</span><h3>두 실행 만들기</h3><p>같은 checkpoint와 instruction budget을 사용하고 `--no-pf`만 바꾼다.</p></article><i></i>
+        <article><span>STEP 02</span><h3>stats 추출</h3><p>IPC뿐 아니라 issued, useful, unused, late, filtered 요청을 함께 본다.</p></article><i></i>
+        <article><span>STEP 03</span><h3>원인을 연결하기</h3><p>속도 변화가 coverage인지, traffic인지, timeliness인지 설명한다.</p></article>
+      </div>
+
+      <div class="terminal-tabs">
+        <div role="tablist"><button class="active" data-code="baseline">1 · Baseline</button><button data-code="enabled">2 · Prefetch ON</button><button data-code="stats">3 · Compare stats</button></div>
+        <pre><button id="copyCode">복사</button><code id="codePanel"></code></pre>
+      </div>
+
+      <div class="stat-dictionary">
+        <header><span>XS-GEM5 STAT DICTIONARY</span><p>현재 checkout의 `src/mem/cache/prefetch/base.cc`에서 확인한 이름이다.</p></header>
+        <div><code>pfIssued</code><p>cache issue boundary에 도달한 prefetch 수</p></div>
+        <div><code>pfUseful</code><p>demand가 실제 사용한 prefetch 수</p></div>
+        <div><code>pfUnused</code><p>사용되지 않고 eviction된 prefetched block 수</p></div>
+        <div><code>pfLate</code><p>demand가 cache, MSHR 또는 write buffer의 진행 중 prefetch를 만난 수</p></div>
+        <div><code>accuracy</code><p>`pfUseful / pfIssued`로 정의된 formula stat</p></div>
+        <div><code>coverage</code><p>`pfUseful / (pfUseful + demandMshrMisses)`</p></div>
+        <div><code>pfFiltered</code><p>issue 전에 제거된 후보 수</p></div>
+        <div><code>pfSpanPage</code><p>page boundary를 넘은 prefetch 수</p></div>
+      </div>
+
+      <aside class="checkpoint"><b>실험 체크리스트</b><ul><li>동일 checkpoint, warmup, maxinsts를 사용했는가?</li><li>IPC 변화와 prefetch traffic을 함께 기록했는가?</li><li>한 workload의 결과를 일반화하지 않았는가?</li><li>결과 디렉터리와 정확한 명령을 보존했는가?</li></ul></aside>
+    </section>
+
+    <section class="references" id="sources">
+      <div><p class="kicker">PRIMARY SOURCES</p><h2>더 깊이 읽기</h2></div>
+      <div class="reference-list">
+        <a href="https://github.com/CMU-SAFARI/DPC4" target="_blank" rel="noreferrer"><span>01</span><b>DPC4 official repository</b><small>submission code, final papers, evaluation scripts</small></a>
+        <a href="https://sites.google.com/view/dpc4-2026/home" target="_blank" rel="noreferrer"><span>02</span><b>4th Data Prefetching Championship</b><small>HPCA 2026 · official event site</small></a>
+        <a href="https://github.com/gem5/gem5/tree/stable/src/mem/cache/prefetch" target="_blank" rel="noreferrer"><span>03</span><b>gem5 prefetcher sources</b><small>reference implementations and interfaces</small></a>
+      </div>
+      <p class="fine">교육용 event model과 논문·시뮬레이터의 실제 측정값은 구분되어 있다. DPC4 설계 설명은 2026년 공식 final paper 기준이다.</p>
     </section>
   </main>
-
-  <footer id="sources">
-    <div><strong>Prefetcher Lab</strong><p>메모리 시스템을 직접 움직이며 배우는 인터랙티브 노트.</p></div>
-    <div><span>PRIMARY SOURCES</span><a href="https://github.com/CMU-SAFARI/DPC4" target="_blank" rel="noreferrer">Official DPC4 repository ↗</a><a href="https://sites.google.com/view/dpc4-2026/home" target="_blank" rel="noreferrer">DPC4 website ↗</a></div>
-    <p class="fine">DPC4 제출작 설명은 각 팀의 공식 final paper를 요약했다. 실험기는 교육용 개념 모델이다.</p>
-  </footer>
 </body>
 </html>
